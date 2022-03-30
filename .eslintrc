@@ -7,12 +7,7 @@
   "plugins": ["@typescript-eslint"],
   "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended", "prettier"],
   "rules": {
-    "@typescript-eslint/no-unused-vars": "warn",
-    "@typescript-eslint/ban-types": "off",
-    "@typescript-eslint/consistent-type-definitions": "off",
-    "prefer-const": "off",
-    "no-prototype-builtins": "off",
-    "@typescript-eslint/no-inferrable-types": "off"
+    "@typescript-eslint/no-unused-vars": "warn"
   },
   "env": {
     "node": true,

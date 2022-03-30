@@ -2,27 +2,36 @@ import { Buffer } from 'buffer';
 import camelCase from 'camelcase';
 import EventEmitter from 'eventemitter3';
 import bs58 from 'bs58';
-import { PublicKey, Commitment, GetProgramAccountsFilter, AccountInfo } from '@solana/web3.js';
-import Provider, { getProvider } from '../../provider';
-import { Idl, IdlTypeDef } from '../../idl.js';
-import Coder, { ACCOUNT_DISCRIMINATOR_SIZE, accountSize, AccountsCoder } from '../../coder/index.js';
-import { Subscription, Address, translateAddress } from '../common';
-import { AllAccountsMap, IdlTypes, TypeDef } from './types';
-import * as pubkeyUtil from '../../utils/pubkey';
-import * as rpcUtil from '../../utils/rpc';
+import { PublicKey, Commitment, GetProgramAccountsFilter, AccountInfo, Connection } from '@solana/web3.js';
+import {
+  ACCOUNT_DISCRIMINATOR_SIZE,
+  Address,
+  Coder,
+  Idl,
+  Subscription,
+  translateAddress,
+  BorshAccountsCoder
+} from '@project-serum/anchor';
+
+import { IdlTypeDef } from '@project-serum/anchor/dist/cjs/idl';
+import { AllAccountsMap, IdlTypes, TypeDef } from '@project-serum/anchor/dist/cjs/program/namespace/types';
+import { accountSize } from '@project-serum/anchor/dist/cjs/coder/common';
+import { getCoder } from '.';
+import * as rpcUtil from '@project-serum/anchor/dist/cjs/utils/rpc';
+import * as pubkeyUtil from '@project-serum/anchor/dist/cjs/utils/pubkey';
 
 export default class AccountFactory {
   public static build<IDL extends Idl>(
     idl: IDL,
     coder: Coder,
     programId: PublicKey,
-    provider?: Provider
+    connection: Connection
   ): AccountNamespace<IDL> {
     const accountFns: AccountNamespace = {};
 
     idl.accounts?.forEach((idlAccount) => {
       const name = camelCase(idlAccount.name);
-      accountFns[name] = new AccountClient<IDL>(idl, idlAccount, programId, provider, coder);
+      accountFns[name] = new AccountClient<IDL>(idl, idlAccount, programId, connection, coder);
     });
 
     return accountFns as AccountNamespace<IDL>;
@@ -33,26 +42,6 @@ type NullableIdlAccount<IDL extends Idl> = IDL['accounts'] extends undefined
   ? IdlTypeDef
   : NonNullable<IDL['accounts']>[number];
 
-/**
- * The namespace provides handles to an [[AccountClient]] object for each
- * account in a program.
- *
- * ## Usage
- *
- * ```javascript
- * account.<account-client>
- * ```
- *
- * ## Example
- *
- * To fetch a `Counter` account from the above example,
- *
- * ```javascript
- * const counter = await program.account.counter.fetch(address);
- * ```
- *
- * For the full API, see the [[AccountClient]] reference.
- */
 export type AccountNamespace<IDL extends Idl = Idl> = {
   [M in keyof AllAccountsMap<IDL>]: AccountClient<IDL>;
 };
@@ -81,14 +70,6 @@ export class AccountClient<
   private _programId: PublicKey;
 
   /**
-   * Returns the client's wallet and network provider.
-   */
-  get provider(): Provider {
-    return this._provider;
-  }
-  private _provider: Provider;
-
-  /**
    * Returns the coder.
    */
   get coder(): Coder {
@@ -96,13 +77,15 @@ export class AccountClient<
   }
   private _coder: Coder;
 
+  private _connection: Connection;
+
   private _idlAccount: A;
 
-  constructor(idl: IDL, idlAccount: A, programId: PublicKey, provider?: Provider, coder?: Coder) {
+  constructor(idl: IDL, idlAccount: A, programId: PublicKey, connection: Connection, coder?: Coder) {
     this._idlAccount = idlAccount;
     this._programId = programId;
-    this._provider = provider ?? getProvider();
-    this._coder = coder ?? new Coder(idl);
+    this._coder = coder ?? getCoder(idl);
+    this._connection = connection;
     this._size = ACCOUNT_DISCRIMINATOR_SIZE + (accountSize(idl, idlAccount) ?? 0);
   }
 
@@ -118,7 +101,7 @@ export class AccountClient<
     }
 
     // Assert the account discriminator is correct.
-    const discriminator = AccountsCoder.accountDiscriminator(this._idlAccount.name);
+    const discriminator = BorshAccountsCoder.accountDiscriminator(this._idlAccount.name);
     if (discriminator.compare(accountInfo.data.slice(0, 8))) {
       throw new Error('Invalid account discriminator');
     }
@@ -145,14 +128,15 @@ export class AccountClient<
    *
    * @param addresses The addresses of the accounts to fetch.
    */
+  // eslint-disable-next-line @typescript-eslint/ban-types
   async fetchMultiple(addresses: Address[], commitment?: Commitment): Promise<(Object | null)[]> {
     const accounts = await rpcUtil.getMultipleAccounts(
-      this._provider.connection,
+      this._connection,
       addresses.map((address) => translateAddress(address)),
       commitment
     );
 
-    const discriminator = AccountsCoder.accountDiscriminator(this._idlAccount.name);
+    const discriminator = BorshAccountsCoder.accountDiscriminator(this._idlAccount.name);
     // Decode accounts where discriminator is correct, null otherwise
     return accounts.map((account) => {
       if (account == null) {
@@ -180,10 +164,10 @@ export class AccountClient<
    *                filters are appended after the discriminator filter.
    */
   async all(filters?: Buffer | GetProgramAccountsFilter[]): Promise<ProgramAccount<T>[]> {
-    const discriminator = AccountsCoder.accountDiscriminator(this._idlAccount.name);
+    const discriminator = BorshAccountsCoder.accountDiscriminator(this._idlAccount.name);
 
-    let resp = await this._provider.connection.getProgramAccounts(this._programId, {
-      commitment: this._provider.connection.commitment,
+    const resp = await this._connection.getProgramAccounts(this._programId, {
+      commitment: this._connection.commitment,
       filters: [
         {
           memcmp: {
@@ -214,7 +198,7 @@ export class AccountClient<
 
     const ee = new EventEmitter();
     address = translateAddress(address);
-    const listener = this._provider.connection.onAccountChange(
+    const listener = this._connection.onAccountChange(
       address,
       (acc) => {
         const account = this._coder.accounts.decode(this._idlAccount.name, acc.data);
@@ -235,13 +219,13 @@ export class AccountClient<
    * Unsubscribes from the account at the given address.
    */
   async unsubscribe(address: Address) {
-    let sub = subscriptions.get(address.toString());
+    const sub = subscriptions.get(address.toString());
     if (!sub) {
       console.warn('Address is not subscribed');
       return;
     }
     if (subscriptions) {
-      await this._provider.connection
+      await this._connection
         .removeAccountChangeListener(sub.listener)
         .then(() => {
           subscriptions.delete(address.toString());
@@ -272,7 +256,7 @@ export class AccountClient<
   }
 
   async getAccountInfo(address: Address, commitment?: Commitment): Promise<AccountInfo<Buffer> | null> {
-    return await this._provider.connection.getAccountInfo(translateAddress(address), commitment);
+    return await this._connection.getAccountInfo(translateAddress(address), commitment);
   }
 }
 
@@ -281,6 +265,7 @@ export class AccountClient<
  *
  * Deserialized account owned by a program.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ProgramAccount<T = any> = {
   publicKey: PublicKey;
   account: T;
