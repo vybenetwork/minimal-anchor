@@ -1,5 +1,5 @@
 {
-  "name": "minimal-anchor",
+  "name": "@vybe-network/minimal-anchor",
   "version": "1.0.0",
   "main": "src/index",
   "license": "MIT",
