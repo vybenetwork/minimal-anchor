@@ -24,6 +24,15 @@ export async function fetchIdl<IDL extends Idl = Idl>(address: Address, rpcURL: 
   return JSON.parse(utf8.decode(inflatedIdl));
 }
 
+/**
+ * The method is a replacement for getting accounts from the Program class of Anchor.
+ * This method returns the accounts directly without requiring an id.json file
+ * @param idl The IDL of the program. You can use {@link fetchIdl} to get an IDL for a program
+ * @param coder The coder for the program. You can use {@link getCoder} to create a coder for an IDL
+ * @param programId The programID for the program
+ * @param connection A web3.js connection object
+ * @returns All program accounts with data
+ */
 export function getProgramAccounts<IDL extends Idl>(
   idl: IDL,
   coder: Coder,
