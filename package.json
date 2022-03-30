@@ -2,7 +2,7 @@
   "name": "minimal-anchor",
   "version": "1.0.0",
   "main": "src/index",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "Vivek Sharma <vivek@vybenetwork.com>",
   "scripts": {
     "start": "ts-node src/index"
