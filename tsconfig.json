@@ -1,12 +1,11 @@
 {
   "extends": "@tsconfig/node16/tsconfig.json",
   "compilerOptions": {
-    "noImplicitAny": false,
-    "resolveJsonModule": true,
-    "strictPropertyInitialization": false,
-    "typeRoots": ["types/", "node_modules/@types"],
-    "lib": ["es2021"]
+    "lib": ["es2021"],
+    "outDir": "dist",
+    "declaration": true
   },
+
   "include": ["src"],
-  "exclude": ["node_modules", "tsconfig.json"]
+  "exclude": ["node_modules", "dist", "tsconfig.json"]
 }
