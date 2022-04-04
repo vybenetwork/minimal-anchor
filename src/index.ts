@@ -54,9 +54,9 @@ export function getCoder(idl: Idl): Coder {
 }
 
 async function test() {
-  const connection = new Connection('https://vybe.genesysgo.net', 'processed');
+  const connection = new Connection('https://api.mainnet-beta.solana.com', 'processed');
   const programID = new PublicKey('SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f');
-  const idl = await fetchIdl(programID, 'https://vybe.genesysgo.net');
+  const idl = await fetchIdl(programID, 'https://api.mainnet-beta.solana.com');
   if (idl) {
     const coder = getCoder(idl);
     const pAccounts = getProgramAccounts(idl, coder, programID, connection);
