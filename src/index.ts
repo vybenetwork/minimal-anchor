@@ -14,10 +14,14 @@ type RpcAuthDetails = {
   authURL: string;
 };
 
-let authDetails: RpcAuthDetails | undefined;
+let authDetails: RpcAuthDetails | undefined = {
+  clientId: '',
+  clientSecret: '',
+  authURL: ''
+};
 
 async function getAuthToken(): Promise<string> {
-  if (authDetails) {
+  if (authDetails && authDetails.authURL !== '' && authDetails.clientId !== '' && authDetails.clientSecret !== '') {
     const token = Base64.encode(`${authDetails.clientId}:${authDetails.clientSecret}`);
     const access_token = await axios.post(authDetails.authURL, 'grant_type=client_credentials', {
       headers: {
