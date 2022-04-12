@@ -1,19 +1,70 @@
 import { Address, BorshCoder, Coder, Idl, translateAddress } from '@project-serum/anchor';
+import { tokenAuthFetchMiddleware } from '@strata-foundation/web3-token-auth';
+import { Base64 } from 'js-base64';
 import { decodeIdlAccount, idlAddress } from '@project-serum/anchor/dist/cjs/idl';
 import { utf8 } from '@project-serum/anchor/dist/cjs/utils/bytes';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Commitment, Connection, FetchMiddleware, PublicKey } from '@solana/web3.js';
+import axios from 'axios';
 import { inflate } from 'pako';
 import AccountFactory, { AccountNamespace } from './account';
+
+type RpcAuthDetails = {
+  clientId: string;
+  clientSecret: string;
+  authURL: string;
+};
+
+let authDetails: RpcAuthDetails | undefined;
+
+async function getAuthToken(): Promise<string> {
+  if (authDetails) {
+    const token = Base64.encode(`${authDetails.clientId}:${authDetails.clientSecret}`);
+    const access_token = await axios.post(authDetails.authURL, 'grant_type=client_credentials', {
+      headers: {
+        authorization: `Basic ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    });
+    const returnedAuthData = access_token.data;
+    return returnedAuthData.access_token as string;
+  }
+  throw 'The Auth Details must be initialized first before calling the getAuthToken method';
+}
 
 /**
  * Fetches an idl from the blockchain.
  * @param address The on-chain address of the program.
  * @static
  */
-export async function fetchIdl<IDL extends Idl = Idl>(address: Address, rpcURL: string): Promise<IDL | null> {
+export async function fetchIdl<IDL extends Idl = Idl>(
+  address: Address,
+  rpcURL: string,
+  rpcAuthInfo?: RpcAuthDetails
+): Promise<IDL | null> {
   const programId = translateAddress(address);
   const idlAddr = await idlAddress(programId);
-  const connection = new Connection(rpcURL, 'processed');
+
+  const connectionConfig: {
+    commitment: Commitment;
+    fetchMiddleware?: FetchMiddleware;
+  } = {
+    commitment: 'confirmed' as Commitment
+  };
+
+  if (rpcAuthInfo) {
+    authDetails = {
+      clientId: rpcAuthInfo.clientId,
+      clientSecret: rpcAuthInfo.clientSecret,
+      authURL: rpcAuthInfo.authURL
+    };
+
+    connectionConfig.fetchMiddleware = tokenAuthFetchMiddleware({
+      tokenExpiry: 180000,
+      getToken: getAuthToken
+    });
+  }
+
+  const connection = new Connection(rpcURL, connectionConfig);
   const accountInfo = await connection.getAccountInfo(idlAddr);
   if (!accountInfo) {
     return null;
