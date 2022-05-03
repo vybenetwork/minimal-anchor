@@ -163,10 +163,33 @@ export class AccountClient<
    *                When filters are of type `GetProgramAccountsFilter[]`,
    *                filters are appended after the discriminator filter.
    */
-  async all(
+  async all(filters?: Buffer | GetProgramAccountsFilter[]): Promise<ProgramAccount<T>[]> {
+    const discriminator = BorshAccountsCoder.accountDiscriminator(this._idlAccount.name);
+
+    const resp = await this._connection.getProgramAccounts(this._programId, {
+      commitment: this._connection.commitment,
+      filters: [
+        {
+          memcmp: {
+            offset: 0,
+            bytes: bs58.encode(filters instanceof Buffer ? Buffer.concat([discriminator, filters]) : discriminator)
+          }
+        },
+        ...(Array.isArray(filters) ? filters : [])
+      ]
+    });
+    return resp.map(({ pubkey, account }) => {
+      return {
+        publicKey: pubkey,
+        account: this._coder.accounts.decode(this._idlAccount.name, account.data)
+      };
+    });
+  }
+
+  async allKeys(
     filters?: Buffer | GetProgramAccountsFilter[],
     applyDataSliceForPrefetching?: boolean
-  ): Promise<ProgramAccount<T>[]> {
+  ): Promise<PublicKey[]> {
     const discriminator = BorshAccountsCoder.accountDiscriminator(this._idlAccount.name);
 
     const resp = await this._connection.getProgramAccounts(this._programId, {
@@ -187,12 +210,8 @@ export class AccountClient<
         ...(Array.isArray(filters) ? filters : [])
       ]
     });
-    return resp.map(({ pubkey, account }) => {
-      return {
-        publicKey: pubkey,
-        account: this._coder.accounts.decode(this._idlAccount.name, account.data)
-      };
-    });
+
+    return resp.map((r) => r.pubkey);
   }
 
   /**
