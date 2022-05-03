@@ -163,11 +163,20 @@ export class AccountClient<
    *                When filters are of type `GetProgramAccountsFilter[]`,
    *                filters are appended after the discriminator filter.
    */
-  async all(filters?: Buffer | GetProgramAccountsFilter[]): Promise<ProgramAccount<T>[]> {
+  async all(
+    filters?: Buffer | GetProgramAccountsFilter[],
+    applyDataSliceForPrefetching?: boolean
+  ): Promise<ProgramAccount<T>[]> {
     const discriminator = BorshAccountsCoder.accountDiscriminator(this._idlAccount.name);
 
     const resp = await this._connection.getProgramAccounts(this._programId, {
       commitment: this._connection.commitment,
+      dataSlice: applyDataSliceForPrefetching
+        ? {
+            offset: 0,
+            length: 0
+          }
+        : undefined,
       filters: [
         {
           memcmp: {
